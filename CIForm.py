@@ -2,17 +2,14 @@ import torch
 import torch.nn as nn
 import warnings
 warnings.filterwarnings('ignore')
-import os
-from sklearn.metrics import accuracy_score,f1_score,recall_score,precision_score
 import math
 import pandas as pd
 import scanpy as sc
-from tqdm.auto import tqdm
+import os
 from torch.utils.data import (DataLoader,Dataset)
 torch.set_default_tensor_type(torch.DoubleTensor)
 import numpy as np
 import random
-from sklearn.model_selection import KFold, StratifiedKFold
 from sklearn import preprocessing
 def same_seeds(seed):
     random.seed(seed)
@@ -28,14 +25,12 @@ def same_seeds(seed):
 
 same_seeds(2021)
 
-def getXY(gap, data_path, data_name,topgenes):
-    adata = sc.read_csv(data_path + data_name + ".csv", delimiter=",")
+def getData(gap, data_path,topgenes,label_path=None):
+    adata = sc.read_csv(data_path, delimiter=",")
 
     sc.pp.filter_genes(adata, min_cells=1)
-    if(not data_name.__contains__("log")):
-        sc.pp.normalize_total(adata, target_sum=1e4)
-        sc.pp.log1p(adata)
-
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    sc.pp.log1p(adata)
     sc.pp.highly_variable_genes(adata, n_top_genes=topgenes)
     adata.raw = adata
     adata = adata[:, adata.var.highly_variable]
@@ -58,22 +53,24 @@ def getXY(gap, data_path, data_name,topgenes):
         single_cell_list.append(feature)
 
     single_cell_list = np.asarray(single_cell_list)
+    if(label_path != None):
+        y_train = pd.read_csv(label_path)
+        y_train = y_train.T
+        y_train = y_train.values[0]
 
-    y_train = pd.read_csv(data_path + "Labels.csv")
-    y_train = y_train.T
-    y_train = y_train.values[0]
+        cell_types = []
+        labelss = []
+        for i in y_train:
+            i = str(i).upper()
+            if (not cell_types.__contains__(i)):
+                cell_types.append(i)
+            labelss.append(cell_types.index(i))
 
-    cell_types = []
-    labelss = []
-    for i in y_train:
-        i = str(i).upper()
-        if (not cell_types.__contains__(i)):
-            cell_types.append(i)
-        labelss.append(cell_types.index(i))
+        labelss = np.asarray(labelss)
 
-    labelss = np.asarray(labelss)
-
-    return single_cell_list, labelss, cell_types
+        return single_cell_list, labelss, cell_types
+    else:
+        return single_cell_list
 
 class myDataSet(Dataset):
     def __init__(self, data, label):
@@ -89,7 +86,6 @@ class myDataSet(Dataset):
         label = torch.from_numpy(self.label)
 
         return data[index], label[index]
-
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout=0.1, max_len=5000):
@@ -129,127 +125,30 @@ class Classifier(nn.Module):
         out = self.pred_layer(out)
         return out
 
+from sklearn.model_selection import KFold, StratifiedKFold
+from sklearn.metrics import accuracy_score,f1_score,recall_score,precision_score
+from tqdm.auto import tqdm
 
-def trainTransformer(model_name, species,lai, epochs,
-                     train_loader,test_loader,
-                     heads,d_models,num_classes,dp,lr,cell_types):
-    log_dir = "log/" + model_name + "/" + species + "/" + lai + "/"
-    log_txt = "log/" + model_name + "/" + species + "/"
+def CIForm(referece_datapath,label_path,query_datapath,s,):
+    gap = s
+    topgenes = 2000
 
-    if (not os.path.isdir(log_dir)):
-        os.makedirs(log_dir)
+    Data, labels, cell_types = getData(gap, referece_datapath,topgenes,label_path=label_path)
 
-    print("num_classes",num_classes)
-    model = Classifier(input_dim=d_models, nhead=heads, d_model=d_models, num_classes=num_classes,dropout=dp)
+    d_models = s
+    heads = 64
+    num_classes = len(cell_types)
+
+    lr = 0.0001
+    dp = 0.1
+    n_epochs = 20
+
+    model = Classifier(input_dim=d_models, nhead=heads, d_model=d_models,
+                       num_classes=num_classes,dropout=dp)
+
     criterion = nn.CrossEntropyLoss()
-
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
 
-    n_epochs = epochs
-    acc_record = {'train': [], 'dev': []}
-    loss_record = {'train': [], 'dev': []}
-    model.train()
-    for epoch in range(n_epochs):
-        # model.train()
-        # These are used to record information in training.
-        train_loss = []
-        train_accs = []
-        train_f1s = []
-        for batch in tqdm(train_loader):
-            # A batch consists of image data and corresponding labels.
-            data, labels = batch
-            logits = model(data)
-            labels = torch.tensor(labels, dtype=torch.long)
-            loss = criterion(logits, labels)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            preds = logits.argmax(1)
-            preds = preds.cpu().numpy()
-            labels = labels.cpu().numpy()
-
-            acc = accuracy_score(labels, preds)
-            f1 = f1_score(labels,preds,average='macro')
-            train_loss.append(loss.item())
-            train_accs.append(acc)
-            train_f1s.append(f1)
-        train_loss = sum(train_loss) / len(train_loss)
-        train_acc = sum(train_accs) / len(train_accs)
-        train_f1 = sum(train_f1s) / len(train_f1s)
-        acc_record['train'].append(train_acc)
-        loss_record['train'].append(train_loss)
-
-        print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}, f1 = {train_f1:.5f}")
-
-    model.eval()
-    test_accs = []
-    test_f1s = []
-    y_predict = []
-    labelss = []
-    for batch in tqdm(test_loader):
-        # A batch consists of image data and corresponding labels.
-        data, labels = batch
-        with torch.no_grad():
-            logits = model(data)
-        preds = logits.argmax(1)
-        preds = preds.cpu().numpy().tolist()
-        labels = labels.cpu().numpy().tolist()
-        acc = accuracy_score(labels, preds)
-        f1 = f1_score(labels, preds, average='macro')
-        test_f1s.append(f1)
-        test_accs.append(acc)
-
-        y_predict.extend(preds)
-        labelss.extend(labels)
-    test_acc = sum(test_accs) / len(test_accs)
-    test_f1 = sum(test_f1s) / len(test_f1s)
-    print("---------------------------------------------end test---------------------------------------------")
-    print("len(y_predict)",len(y_predict))
-    all_acc = accuracy_score(labelss, y_predict)
-    all_f1 = f1_score(labelss, y_predict, average='macro')
-    print("all_acc:", all_acc,"all_f1:", all_f1)
-
-    labelsss = []
-    y_predicts = []
-    for i in labelss:
-        labelsss.append(cell_types[i])
-    for i in y_predict:
-        y_predicts.append(cell_types[i])
-
-
-    last_path = log_dir + str(epochs) + "/"
-    if (not os.path.isdir(last_path)):
-        os.makedirs(last_path)
-    with open(log_txt + "end_norm.txt", "a") as f:
-        f.writelines("log_dir:" + last_path + "\n")
-        f.writelines("acc:" + str(all_acc) + "\n")
-        f.writelines('f1:' + str(all_f1) + "\n")
-        
-
-    np.save(last_path + model_name + 'y_test.npy', labelss)
-    np.save(last_path + model_name + 'y_predict.npy', y_predict)
-
-    np.save(last_path + model_name + 'y_tests.npy', labelsss)
-    np.save(last_path + model_name + 'y_predicts.npy', y_predicts)
-
-    torch.save(model.state_dict(), last_path + model_name + '.tar')
-
-#'02Goolam'
-model_name = "Tcell_std_end5"
-indexs = ['Segerstolpe_c3',] #'Segerstolpe_c3' ,'Muraro_log','Human'  ,'Mouse',,'Mouse','Segerstolpe' ,'Xin_log','Muraro_log','Xin_log','Muraro_log' ,'Human', 'Human','Mouse','Mouse', ,'Xin_log','Muraro_log'
-
-for j in indexs:
-    x_Traindata_path = 'Dataset/scRNAseq_Benchmark_datasets/Intra-dataset/Pancreatic_data/'+j+"//"
-    Traindata_name = j
-    species = Traindata_name
-    print("species",species)
-    species = "Intra/Pancreatic_data/"+ species
-
-
-    dim = 1024
-    topgenes = 2000
-    Data, labels, cell_types = getXY(dim, x_Traindata_path, Traindata_name,topgenes)
     l = Data.shape[0]
     if(l > 5000):
         batch_sizes = 512
@@ -283,16 +182,83 @@ for j in indexs:
         test_dataset = myDataSet(data=X_test,label=y_test)
         test_loader = DataLoader(test_dataset,batch_size=batch_sizes,shuffle=False,pin_memory=True)
 
-        num_classes = len(cell_types)
-        number_encoder = 1
-        heads = 64
-        dim_feedforward = 1024
-        dp = 0.1
-        lr = 0.0001
-        lai = "RELU_dataloader_comGenes_norm/mean/fold"+str(fold)+"/"+str(batch_sizes)+"_"+str(dim)+"_"+ str(number_encoder)+"_"+str(heads)+"_"+str(dp)+"_"+str(lr)  + "_"+str(dim_feedforward)+"_"+str(topgenes)
+    model.train()
+    for epoch in range(n_epochs):
+        # model.train()
+        # These are used to record information in training.
+        train_loss = []
+        train_accs = []
+        train_f1s = []
+        for batch in tqdm(train_loader):
+            # A batch consists of image data and corresponding labels.
+            data, labels = batch
+            logits = model(data)
+            labels = torch.tensor(labels, dtype=torch.long)
+            loss = criterion(logits, labels)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-        epochs = 20
-        trainTransformer(model_name,species,lai,epochs,
-                         train_loader,test_loader,
-                         heads,dim,num_classes,dp,lr,cell_types)
+            preds = logits.argmax(1)
+            preds = preds.cpu().numpy()
+            labels = labels.cpu().numpy()
 
+            acc = accuracy_score(labels, preds)
+            f1 = f1_score(labels,preds,average='macro')
+            train_loss.append(loss.item())
+            train_accs.append(acc)
+            train_f1s.append(f1)
+        train_loss = sum(train_loss) / len(train_loss)
+        train_acc = sum(train_accs) / len(train_accs)
+        train_f1 = sum(train_f1s) / len(train_f1s)
+
+        print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}, f1 = {train_f1:.5f}")
+
+        model.eval()
+        test_accs = []
+        test_f1s = []
+        y_predict = []
+        labelss = []
+        for batch in tqdm(test_loader):
+            # A batch consists of image data and corresponding labels.
+            data, labels = batch
+            with torch.no_grad():
+                logits = model(data)
+            preds = logits.argmax(1)
+            preds = preds.cpu().numpy().tolist()
+            labels = labels.cpu().numpy().tolist()
+            acc = accuracy_score(labels, preds)
+            f1 = f1_score(labels, preds, average='macro')
+            test_f1s.append(f1)
+            test_accs.append(acc)
+
+            y_predict.extend(preds)
+            labelss.extend(labels)
+        test_acc = sum(test_accs) / len(test_accs)
+        test_f1 = sum(test_f1s) / len(test_f1s)
+        print("---------------------------------------------end test---------------------------------------------")
+        print("len(y_predict)",len(y_predict))
+        all_acc = accuracy_score(labelss, y_predict)
+        all_f1 = f1_score(labelss, y_predict, average='macro')
+        print("all_acc:", all_acc,"all_f1:", all_f1)
+
+        labelsss = []
+        y_predicts = []
+        for i in labelss:
+            labelsss.append(cell_types[i])
+        for i in y_predict:
+            y_predicts.append(cell_types[i])
+
+        log_dir = "log/"
+        log_txt = "log/"
+
+        if (not os.path.isdir(log_dir)):
+            os.makedirs(log_dir)
+
+        last_path = log_dir + str(n_epochs) + "/"
+        if (not os.path.isdir(last_path)):
+            os.makedirs(last_path)
+        with open(log_txt + "end_norm.txt", "a") as f:
+            f.writelines("log_dir:" + last_path + "\n")
+            f.writelines("acc:" + str(all_acc) + "\n")
+            f.writelines('f1:' + str(all_f1) + "\n")

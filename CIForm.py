@@ -6,11 +6,15 @@ import math
 import pandas as pd
 import scanpy as sc
 import os
+from tqdm.auto import tqdm
+from sklearn.model_selection import KFold, StratifiedKFold
+from sklearn.metrics import accuracy_score,f1_score,recall_score,precision_score
 from torch.utils.data import (DataLoader,Dataset)
 torch.set_default_tensor_type(torch.DoubleTensor)
 import numpy as np
 import random
 from sklearn import preprocessing
+
 def same_seeds(seed):
     random.seed(seed)
     # Numpy
@@ -72,7 +76,7 @@ def getData(gap, data_path,topgenes,label_path=None):
     else:
         return single_cell_list
 
-class myDataSet(Dataset):
+class TrainDataSet(Dataset):
     def __init__(self, data, label):
         self.data = data
         self.label = label
@@ -86,6 +90,19 @@ class myDataSet(Dataset):
         label = torch.from_numpy(self.label)
 
         return data[index], label[index]
+
+class TestDataSet(Dataset):
+    def __init__(self, data):
+        self.data = data
+
+        self.length = len(data)
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        data = torch.from_numpy(self.data)
+        return data[index]
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout=0.1, max_len=5000):
@@ -125,23 +142,21 @@ class Classifier(nn.Module):
         out = self.pred_layer(out)
         return out
 
-from sklearn.model_selection import KFold, StratifiedKFold
-from sklearn.metrics import accuracy_score,f1_score,recall_score,precision_score
-from tqdm.auto import tqdm
 
-def CIForm(referece_datapath,label_path,query_datapath,s,):
+def CIForm(referece_datapath,label_path,query_datapath,s):
     gap = s
     topgenes = 2000
-
-    Data, labels, cell_types = getData(gap, referece_datapath,topgenes,label_path=label_path)
-
     d_models = s
     heads = 64
-    num_classes = len(cell_types)
 
     lr = 0.0001
     dp = 0.1
-    n_epochs = 20
+    batch_sizes = 256
+
+
+    train_data, labels, cell_types = getData(gap, referece_datapath,topgenes,label_path=label_path)
+    query_data = getData(gap, query_datapath,topgenes,label_path=None)
+    num_classes = np.unique(cell_types) + 1
 
     model = Classifier(input_dim=d_models, nhead=heads, d_model=d_models,
                        num_classes=num_classes,dropout=dp)
@@ -149,38 +164,22 @@ def CIForm(referece_datapath,label_path,query_datapath,s,):
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
 
-    l = Data.shape[0]
-    if(l > 5000):
-        batch_sizes = 512
-    else:
-        batch_sizes = 256
 
-    print("batch_sizes",batch_sizes)
+    train_dataset = TrainDataSet(data=train_data, label=labels)
+    train_loader = DataLoader(train_dataset, batch_size=batch_sizes, shuffle=True,
+                              pin_memory=True)
+    test_dataset = TestDataSet(data=query_data)
+    test_loader = DataLoader(test_dataset, batch_size=batch_sizes, shuffle=False,
+                             pin_memory=True)
 
-    num_classes = len(cell_types)
-    print("Data.shape",Data.shape)
-    skf = StratifiedKFold(n_splits=5,random_state=2021, shuffle=True)
-    fold = 0
-    Indexs = []
-    for index in range(len(Data)):
-        Indexs.append(index)
-    Indexs = np.asarray(Indexs)
-    for train_index, test_index in skf.split(Data, labels):
-        fold = fold + 1
-        X_train, X_test = Data[train_index], Data[test_index]
-        X_train = np.asarray(X_train)
-        X_test = np.asarray(X_test)
+    print("num_classes", num_classes)
 
-        y_train, y_test = labels[train_index], labels[test_index]
+    new_cellTypes = []
+    new_cellTypes.append("unassigned")
+    # for i in cell_types:
+    new_cellTypes.extend(cell_types)
 
-        y_train = np.asarray(y_train)
-        y_test = np.asarray(y_test)
-
-        train_dataset = myDataSet(data=X_train,label=y_train)
-        train_loader = DataLoader(train_dataset,batch_size=batch_sizes,shuffle=True,pin_memory=True)
-
-        test_dataset = myDataSet(data=X_test,label=y_test)
-        test_loader = DataLoader(test_dataset,batch_size=batch_sizes,shuffle=False,pin_memory=True)
+    n_epochs = 20
 
     model.train()
     for epoch in range(n_epochs):

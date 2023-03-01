@@ -18,6 +18,6 @@ Instructions and examples are provided in the following tutorials.
 [//]: # (```)
 
 ># Tutorial
-- [Cell Type annotation on Intra-datasets](https://github.com/zhanglab-wbgcas/STGRNS/blob/main/Tutorial.ipynb)
+- [Cell Type annotation on Intra-datasets]()
 
 ```

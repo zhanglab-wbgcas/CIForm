@@ -29,7 +29,7 @@ def same_seeds(seed):
 
 same_seeds(2021)
 
-def getData(gap, data_path,topgenes,label_path=None):
+def getXY(gap, data_path,topgenes,label_path=None):
     adata = sc.read_csv(data_path, delimiter=",")
 
     sc.pp.filter_genes(adata, min_cells=1)
@@ -154,8 +154,8 @@ def CIForm(referece_datapath,label_path,query_datapath,s):
     batch_sizes = 256
 
 
-    train_data, labels, cell_types = getData(gap, referece_datapath,topgenes,label_path=label_path)
-    query_data = getData(gap, query_datapath,topgenes,label_path=None)
+    train_data, labels, cell_types = getXY(gap, referece_datapath,topgenes,label_path=label_path)
+    query_data = getXY(gap, query_datapath,topgenes,label_path=None)
     num_classes = np.unique(cell_types) + 1
 
     model = Classifier(input_dim=d_models, nhead=heads, d_model=d_models,

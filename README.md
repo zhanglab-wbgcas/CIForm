@@ -21,4 +21,3 @@ Instructions and examples are provided in the following tutorials.
 - [Cell Type annotation on Intra-datasets](https://github.com/zhanglab-wbgcas/CIForm/blob/main/Tutorial/Tutorial_Intra.ipynb)
 - [Cell Type annotation on Inter-datasets](https://github.com/zhanglab-wbgcas/CIForm/blob/main/Tutorial/Tutorial_Inter.ipynb)
 
-># Tutorial

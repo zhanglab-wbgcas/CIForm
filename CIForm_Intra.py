@@ -1,21 +1,20 @@
 
-
 import torch
 import torch.nn as nn
 import warnings
 warnings.filterwarnings('ignore')
+import os
+from sklearn.metrics import accuracy_score,f1_score,recall_score,precision_score
 import math
 import pandas as pd
 import scanpy as sc
-import os
 from tqdm.auto import tqdm
-from sklearn.metrics import accuracy_score,f1_score,recall_score,precision_score
 from torch.utils.data import (DataLoader,Dataset)
 torch.set_default_tensor_type(torch.DoubleTensor)
 import numpy as np
 import random
+from sklearn.model_selection import KFold, StratifiedKFold
 from sklearn import preprocessing
-
 def same_seeds(seed):
     random.seed(seed)
     # Numpy
@@ -27,110 +26,58 @@ def same_seeds(seed):
         torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
+
 same_seeds(2021)
 
+def getData(gap, data_path,topgenes,label_path=None,T=False):
+    adata = sc.read_csv(data_path, delimiter=",")
+    if(T == False):
+        adata = adata.T
+    sc.pp.filter_genes(adata, min_cells=1)
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    sc.pp.log1p(adata)
+    sc.pp.highly_variable_genes(adata, n_top_genes=topgenes)
+    adata.raw = adata
+    adata = adata[:, adata.var.highly_variable]
 
-# In[39]:
-
-
-def getXY(gap, adata, Traindata_paths):
     X = adata.X
     single_cell_list = []
     for single_cell in X:
         feature = []
         length = len(single_cell)
         for k in range(0, length, gap):
-            if (k + gap <= length):
-                a = single_cell[k:k + gap]
-            else:
+            if (k + gap > length):
                 a = single_cell[length - gap:length]
+            else:
+                a = single_cell[k:k + gap]
 
-            a = preprocessing.scale(a)
+            a = preprocessing.scale(a,axis=0, with_mean=True, with_std=True, copy=True)
             feature.append(a)
+
         feature = np.asarray(feature)
         single_cell_list.append(feature)
 
     single_cell_list = np.asarray(single_cell_list)
-    if(Traindata_paths != None):
-
-        y_trains = []
-        for path in Traindata_paths:
-            y_train = pd.read_csv(path + "Labels.csv")
-            y_train = y_train.T
-            y_train = y_train.values[0]
-            y_trains.extend(y_train)
+    if(label_path != None):
+        y_train = pd.read_csv(label_path)
+        y_train = y_train.T
+        y_train = y_train.values[0]
 
         cell_types = []
-        for i in y_trains:
+        labelss = []
+        for i in y_train:
             i = str(i).upper()
             if (not cell_types.__contains__(i)):
                 cell_types.append(i)
+            labelss.append(cell_types.index(i))
 
-        return single_cell_list, y_trains, cell_types
+        labelss = np.asarray(labelss)
+
+        return single_cell_list, labelss, cell_types
     else:
         return single_cell_list
 
-def getNewData(cells, cell_types):
-    labels = []
-    for i in range(len(cells)):
-        cell = cells[i]
-        cell = str(cell).upper()
-
-        if (cell_types.__contains__(cell)):
-            indexs = cell_types.index(cell)
-            labels.append(indexs + 1)
-        else:
-            labels.append(0)  # 0 denotes the unknowns cell types
-
-    return np.asarray(labels)
-
-
-def getData(gap, Traindata_paths, Train_names,
-            Testdata_path, Testdata_name, topgenes):
-    all_adata = sc.AnnData
-    train_adata = sc.AnnData
-    for sa in range(0, len(Train_names)):
-        temp_adata = sc.read_csv(Traindata_paths[sa] + Train_names[sa] + ".csv", first_column_names=True)
-        temp_adata.var_names = [str(i).upper() for i in temp_adata.var_names]
-        temp_adata.var_names_make_unique()
-
-        train_adata = train_adata.concatenate(temp_adata)
-        train_adata.var_names_make_unique()
-
-    Trainadata_num = len(train_adata)
-    test_adata = sc.read_csv(Testdata_path + Testdata_name + ".csv")
-    test_adata.var_names_make_unique()
-    sc.pp.log1p(train_adata)
-    sc.pp.log1p(test_adata)
-
-    all_adata = all_adata.concatenate(train_adata)
-    all_adata = all_adata.concatenate(test_adata)
-    sc.pp.filter_genes(all_adata, min_cells=1)
-    width = all_adata.X.shape[1]
-    
-    if (width < topgenes):
-        topgenes = width
-        
-    sc.pp.highly_variable_genes(all_adata, n_top_genes=topgenes)
-    all_adata.raw = all_adata
-    all_adata = all_adata[:, all_adata.var.highly_variable]
-
-    Train_adata = all_adata[:Trainadata_num]
-    Test_adata = all_adata[Trainadata_num:]
-
-    del all_adata
-    train_data, train_cells, train_cellTypes = getXY(gap, Train_adata, Traindata_paths)
-    Testdata_paths = []
-    Testdata_paths.append(Testdata_path)
-    test_data = getXY(gap, Test_adata, Label_path = None)
-    cell_types = train_cellTypes
-
-    Train_labels = getNewData(train_cells, cell_types)
-
-    return train_data, Train_labels, test_data, cell_types
-
-
-class TrainDataSet(Dataset):
+class myDataSet(Dataset):
     def __init__(self, data, label):
         self.data = data
         self.label = label
@@ -144,20 +91,6 @@ class TrainDataSet(Dataset):
         label = torch.from_numpy(self.label)
 
         return data[index], label[index]
-
-class TestDataSet(Dataset):
-    def __init__(self, data):
-        self.data = data
-
-        self.length = len(data)
-
-    def __len__(self):
-        return self.length
-
-    def __getitem__(self, index):
-        data = torch.from_numpy(self.data)
-        return data[index]
-
 
 
 class PositionalEncoding(nn.Module):
@@ -176,7 +109,7 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:x.size(0), :]
         return self.dropout(x)
 
-class CIForm(nn.Module):
+class Classifier(nn.Module):
     def __init__(self, input_dim, nhead=2, d_model=80, num_classes=2, dropout=0.1):
         super().__init__()
         self.encoder_layer = nn.TransformerEncoderLayer(
@@ -198,40 +131,63 @@ class CIForm(nn.Module):
         out = self.pred_layer(out)
         return out
 
-def main(s,referece_datapaths,Train_names,Testdata_path,Testdata_name):
+
+from sklearn.model_selection import KFold, StratifiedKFold
+from sklearn.metrics import accuracy_score,f1_score,recall_score,precision_score
+from tqdm.auto import tqdm
+
+def CIForm(referece_datapath,label_path,query_datapath,s,T = False):
     gap = s
     topgenes = 2000
+
+    Data, labels, cell_types = getData(gap, referece_datapath,topgenes,label_path=label_path,T = False)
+
     d_models = s
     heads = 64
+    num_classes = len(cell_types)
 
     lr = 0.0001
     dp = 0.1
-    batch_sizes = 256
     n_epochs = 20
 
-    train_data, labels, query_data, cell_types = getData(gap, referece_datapaths,Train_names,Testdata_path,
-                                             Testdata_name,topgenes)
-
-    num_classes = np.unique(cell_types) + 1
-
-    model = CIForm(input_dim=d_models, nhead=heads, d_model=d_models,
+    model = Classifier(input_dim=d_models, nhead=heads, d_model=d_models,
                        num_classes=num_classes,dropout=dp)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
 
+    l = Data.shape[0]
+    if(l > 5000):
+        batch_sizes = 512
+    else:
+        batch_sizes = 256
 
-    train_dataset = TrainDataSet(data=train_data, label=labels)
-    train_loader = DataLoader(train_dataset, batch_size=batch_sizes, shuffle=True,
-                              pin_memory=True)
-    test_dataset = TestDataSet(data=query_data)
-    test_loader = DataLoader(test_dataset, batch_size=batch_sizes, shuffle=False,
-                             pin_memory=True)
-    new_cellTypes = []
-    new_cellTypes.append("unassigned")
-    new_cellTypes.extend(cell_types)
+    print("batch_sizes",batch_sizes)
 
+    num_classes = len(cell_types)
+    print("Data.shape",Data.shape)
+    skf = StratifiedKFold(n_splits=5,random_state=2021, shuffle=True)
+    fold = 0
+    Indexs = []
+    for index in range(len(Data)):
+        Indexs.append(index)
+    Indexs = np.asarray(Indexs)
+    for train_index, test_index in skf.split(Data, labels):
+        fold = fold + 1
+        X_train, X_test = Data[train_index], Data[test_index]
+        X_train = np.asarray(X_train)
+        X_test = np.asarray(X_test)
 
+        y_train, y_test = labels[train_index], labels[test_index]
+
+        y_train = np.asarray(y_train)
+        y_test = np.asarray(y_test)
+
+        train_dataset = myDataSet(data=X_train,label=y_train)
+        train_loader = DataLoader(train_dataset,batch_size=batch_sizes,shuffle=True,pin_memory=True)
+
+        test_dataset = myDataSet(data=X_test,label=y_test)
+        test_loader = DataLoader(test_dataset,batch_size=batch_sizes,shuffle=False,pin_memory=True)
 
     model.train()
     for epoch in range(n_epochs):
@@ -288,7 +244,7 @@ def main(s,referece_datapaths,Train_names,Testdata_path,Testdata_name):
         test_acc = sum(test_accs) / len(test_accs)
         test_f1 = sum(test_f1s) / len(test_f1s)
         print("---------------------------------------------end test---------------------------------------------")
-        print("len(y_predict)",len(y_predict))
+#         print("len(y_predict)",len(y_predict))
         all_acc = accuracy_score(labelss, y_predict)
         all_f1 = f1_score(labelss, y_predict, average='macro')
         print("all_acc:", all_acc,"all_f1:", all_f1)
@@ -314,16 +270,11 @@ def main(s,referece_datapaths,Train_names,Testdata_path,Testdata_name):
             f.writelines("acc:" + str(all_acc) + "\n")
             f.writelines('f1:' + str(all_f1) + "\n")
 
-
+referece_datapath = "Dataset\scRNAseq_Benchmark_datasets\Intra-dataset\Pancreatic_data\Human\Human.csv" 
+label_path = "Dataset\scRNAseq_Benchmark_datasets\Intra-dataset\Pancreatic_data\Human\Labels.csv"
+query_datapath = ""
 s = 1024
-
-x_Traindata_path = 'Dataset/imu/Sun/'
-Train_name = 'Sun'
-referece_datapaths = [x_Traindata_path]
-Train_names = [Train_name]
-
-Testdata_path = 'Dataset/imu/pbmc_10k_v3/'
-Testdata_name = 'pbmc_10k_v3'
-##Datasets: The rows represent the cells and the columns represent the genes
-main(s,referece_datapaths,Train_names,Testdata_path,Testdata_name)
+##T==True：The rows represent the cells and the columns represent the genes
+##T=False: The rows represent the genes and the columns represent the cells
+CIForm(referece_datapath,label_path,query_datapath,s,T = False)
 

@@ -19,13 +19,13 @@ Scanpy
 random
 ```
 ># Input file
-reference dataset
-cell type label of reference dataset
-query dataset
++reference dataset
++cell type label of reference dataset
++query dataset
 
 ># Output file
-After training the CIForm model, the model will be save at: "log/CIForm.tar".
-The model prediction is saved in the log/y_predicts.npy format.
++After training the CIForm model, the model will be save at: "log/CIForm.tar".
++The model prediction is saved in the log/y_predicts.npy format.
 
 
 [//]: # (```)

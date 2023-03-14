@@ -35,7 +35,7 @@ The model prediction is saved in the log/y_predicts.npy.
 
 [//]: # (```)
 
-># Tutorial
+># Tutorial and Usage
 - [Cell Type annotation on Intra-datasets](https://github.com/zhanglab-wbgcas/CIForm/blob/main/Tutorial/Tutorial_Intra.ipynb)
 - [Cell Type annotation on Inter-datasets](https://github.com/zhanglab-wbgcas/CIForm/blob/main/Tutorial/Tutorial_Inter.ipynb)
 - [Cell Type annotation on Inter-datasets using multi-source](https://github.com/zhanglab-wbgcas/CIForm/blob/main/Tutorial/Tutorial_multi-sources.ipynb)

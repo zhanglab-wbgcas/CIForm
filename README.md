@@ -30,7 +30,7 @@ query dataset.
 ## Output file
 ```
 After training the CIForm model, the model will be save at: "log/CIForm.tar".
-The model prediction is saved in the log/y_predicts.npy format.
+The model prediction is saved in the log/y_predicts.npy.
 ```
 
 [//]: # (```)

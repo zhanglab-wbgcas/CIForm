@@ -61,8 +61,9 @@ The label file should be a n rows \* 1 column vector. For example,
 - [Cell Type annotation on Inter-datasets](https://github.com/zhanglab-wbgcas/CIForm/blob/main/Tutorial/Tutorial_Inter.ipynb)
 - [Cell Type annotation on Inter-datasets using multi-source](https://github.com/zhanglab-wbgcas/CIForm/blob/main/Tutorial/Tutorial_multi-sources.ipynb)
 ## processsed Data
-Pancreas datasets(Baron Mouse,Baron Human,Xin,Muraro,Segerstolpe), TM(Tabula Muris), Zhang 68K, AMB.
-https://doi.org/10.5281/zenodo.3357167.
+- Pancreas datasets(Baron Mouse,Baron Human,Xin,Muraro,Segerstolpe), TM(Tabula Muris), Zhang 68K, AMB .
+- https://doi.org/10.5281/zenodo.3357167.
+
 Immune datasets(Oetjen, Dahlin, pbmc_10k_v3, and Sun[52]) and Brain datasets(Rosenberg, Zeisel, Saunders).
 https://figshare.com/articles/dataset/Benchmarking_atlas-level_data_integration_in_single-cell_genomics__integration_task_datasets_Immune_and_pancreas_/12420968.
 

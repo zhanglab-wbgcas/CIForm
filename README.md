@@ -66,7 +66,7 @@ https://doi.org/10.5281/zenodo.3357167
 Immune datasets(Oetjen, Dahlin, pbmc_10k_v3, and Sun[52]) and Brain datasets(Rosenberg, Zeisel, Saunders)
 https://figshare.com/articles/dataset/Benchmarking_atlas-level_data_integration_in_single-cell_genomics__integration_task_datasets_Immune_and_pancreas_/12420968.
 
-##The pre-processing code
+## The scRNA-seq datasets pre-processing code
 https://github.com/zhanglab-wbgcas/CIForm/tree/main/Data_processing
 
 

@@ -70,5 +70,7 @@ The label file should be a n rows \* 1 column vector. For example,
 ## The scRNA-seq datasets pre-processing code
 - https://github.com/zhanglab-wbgcas/CIForm/tree/main/Data_processing
 
-
+># Paper Link
+> CIForm as a Transformer-based model for cell-type annotation of large-scale single-cell RNA-seq data 
+https://academic.oup.com/bib/advance-article/doi/10.1093/bib/bbad195/7169137
 

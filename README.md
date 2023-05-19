@@ -1,5 +1,5 @@
 # CIForm
-![image]()
+![image](https://github.com/zhanglab-wbgcas/CIForm/blob/main/Figure%201.jpg)
 
 ># Introduction
 

@@ -166,7 +166,7 @@ def ciForm(s ,Train_adata ,train_labels ,Test_adata,y_test,n_epochs=20):
     num_classes = len(cell_types) + 1
 
     query_data, test_cells, test_cellTypes = getXY(gap, Test_adata, y_test)
-    test_labels = getNewData(test_cells, cell_types)
+    test_labels = getNewData(test_cells, train_cellTypes)
 
 
     model = CIForm(input_dim=d_models, nhead=heads, d_model=d_models,
@@ -243,7 +243,11 @@ def ciForm(s ,Train_adata ,train_labels ,Test_adata,y_test,n_epochs=20):
     test_acc = sum(test_accs) / len(test_accs)
     test_f1 = sum(test_f1s) / len(test_f1s)
     print("---------------------------------------------end test---------------------------------------------")
+    print("y_predict", y_predict)
+    print("labelss", labelss)
+
     print("len(y_predict)" ,len(y_predict))
+    print("test_acc:", test_acc ,"test_f1:", test_f1)
     all_acc = accuracy_score(labelss, y_predict)
     all_f1 = f1_score(labelss, y_predict, average='macro')
     print("all_acc:", all_acc ,"all_f1:", all_f1)
@@ -301,7 +305,7 @@ print("X.shape", X.shape)
 Y = adata_mod1.obs['Celltype'].to_numpy()
 print("Y.shape", Y.shape)
 
-test_size = 0.2
+test_size = 0.99
 ref_adata, query_adata, y_train, y_test = train_test_split(adata_mod1, Y, test_size=test_size, random_state=2024)
 print("ref_adata",ref_adata)
 print("query_adata",query_adata)

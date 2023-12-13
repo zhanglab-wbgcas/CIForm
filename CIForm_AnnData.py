@@ -146,7 +146,7 @@ class CIForm(nn.Module):
         out = self.pred_layer(out)
         return out
 
-def ciForm(s ,Train_adata ,train_labels ,Test_adata,y_test,n_epochs=20):
+def ciForm(s ,Train_adata ,train_labels ,Test_adata,n_epochs=20):
     gap = s
     d_models = s
     heads = 64
@@ -165,9 +165,7 @@ def ciForm(s ,Train_adata ,train_labels ,Test_adata,y_test,n_epochs=20):
     cell_types = np.unique(train_labels)
     num_classes = len(cell_types) + 1
 
-    query_data, test_cells, test_cellTypes = getXY(gap, Test_adata, y_test)
-    test_labels = getNewData(test_cells, train_cellTypes)
-
+    query_data = getXY(gap, Test_adata, [])
 
     model = CIForm(input_dim=d_models, nhead=heads, d_model=d_models,
                    num_classes=num_classes ,dropout=dp)
@@ -179,7 +177,7 @@ def ciForm(s ,Train_adata ,train_labels ,Test_adata,y_test,n_epochs=20):
     train_dataset = TrainDataSet(data=train_data, label=labels)
     train_loader = DataLoader(train_dataset, batch_size=batch_sizes, shuffle=True,
                               pin_memory=True)
-    test_dataset = TrainDataSet(data=query_data, label=test_labels)
+    test_dataset = TestDataSet(data=query_data)
     test_loader = DataLoader(test_dataset, batch_size=batch_sizes, shuffle=False,
                              pin_memory=True)
     new_cellTypes = []
@@ -221,57 +219,17 @@ def ciForm(s ,Train_adata ,train_labels ,Test_adata,y_test,n_epochs=20):
             (f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}, f1 = {train_f1:.5f}")
 
     model.eval()
-    test_accs = []
-    test_f1s = []
     y_predict = []
-    labelss = []
     for batch in tqdm(test_loader):
-        # A batch consists of image data and corresponding labels.
-        data, labels = batch
+        data = batch
         with torch.no_grad():
             logits = model(data)
         preds = logits.argmax(1)
         preds = preds.cpu().numpy().tolist()
-        labels = labels.cpu().numpy().tolist()
-        acc = accuracy_score(labels, preds)
-        f1 = f1_score(labels, preds, average='macro')
-        test_f1s.append(f1)
-        test_accs.append(acc)
 
         y_predict.extend(preds)
-        labelss.extend(labels)
-    test_acc = sum(test_accs) / len(test_accs)
-    test_f1 = sum(test_f1s) / len(test_f1s)
-    print("---------------------------------------------end test---------------------------------------------")
-    print("y_predict", y_predict)
-    print("labelss", labelss)
 
-    print("len(y_predict)" ,len(y_predict))
-    print("test_acc:", test_acc ,"test_f1:", test_f1)
-    all_acc = accuracy_score(labelss, y_predict)
-    all_f1 = f1_score(labelss, y_predict, average='macro')
-    print("all_acc:", all_acc ,"all_f1:", all_f1)
-
-    labelsss = []
-    y_predicts = []
-    for i in labelss:
-        labelsss.append(new_cellTypes[i])
-    for i in y_predict:
-        y_predicts.append(new_cellTypes[i])
-
-    log_dir = "log/"
-    log_txt = "log/"
-
-    if (not os.path.isdir(log_dir)):
-        os.makedirs(log_dir)
-
-    last_path = log_dir + str(n_epochs) + "/"
-    if (not os.path.isdir(last_path)):
-        os.makedirs(last_path)
-    with open(log_txt + "end_norm.txt", "a") as f:
-        f.writelines("log_dir:" + last_path + "\n")
-        f.writelines("acc:" + str(all_acc) + "\n")
-        f.writelines('f1:' + str(all_f1) + "\n")
+    return y_predicts
 
 
 s = 1024
@@ -311,5 +269,23 @@ print("ref_adata",ref_adata)
 print("query_adata",query_adata)
 start = tm.time()
 
-ciForm(s ,ref_adata ,y_train ,query_adata,y_test,n_epochs=20)
+preds = ciForm(s ,ref_adata ,y_train ,query_adata,n_epochs=50)
+end = tm.time()
+all_time = end - start
+
+acc = accuracy_score(y_test, preds)
+f1 = f1_score(y_test, preds, average='macro')
+print("acc", acc, "f1", f1)
+
+log_txt = "log/Intra_split/"+ tissues + "/" + data_name + "/"
+last_path = log_txt + "test_size=" + str(test_size)
+if (not os.path.isdir(log_txt)):
+    os.makedirs(log_txt)
+
+np.save(last_path + "_pred", preds)
+with open(log_txt + "end_test.txt", "a") as f:
+    f.writelines("log_dir:" + last_path + "\n")
+    f.writelines("acc:" + str(acc) + "\n")
+    f.writelines("f1:" + str(f1) + "\n")
+    f.writelines("all_time:" + str(all_time) + "\n")
 
